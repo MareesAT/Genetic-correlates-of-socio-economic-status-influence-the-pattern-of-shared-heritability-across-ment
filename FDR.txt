@@ -1,0 +1,153 @@
+################################## FDR
+
+Example script for rgs raw and rgs after partialling out SES
+
+# activate libraries
+library(ggplot2)
+library(RColorBrewer)
+library(corrplot)
+library(gridExtra)
+library(grid)
+
+
+######
+
+# part I - rgs:
+# - 120 rgs between mental health outcomes - uncorrected
+# - 120 rgs between mental health outcomes - corrected for SES
+
+# part II - rg changes:
+# - 120 rg-changes - corrected for SES
+
+
+### part I - rgs ###
+
+# read in correlation matrices
+rgs.raw <- read.csv("Correlation_matrix.csv",header=T,sep = ",")
+rgs.SES <- read.csv("SES_pcor_rg_matrix.csv",header=T,sep = ",")
+rownames(rgs.raw) <- rgs.raw$X
+rownames(rgs.SES) <- rgs.SES$X
+rgs.raw$X <- NULL
+rgs.SES$X <- NULL
+diag(rgs.raw) <- 1
+diag(rgs.SES) <- 1
+
+SEs.raw <- read.csv("Correlation_SE_matrix.csv",header=T,sep = ",")
+SEs.SES <- read.csv("SES_pcorSE_matrix.csv",header=T,sep = ",")
+rownames(SEs.raw) <- SEs.raw$X
+rownames(SEs.SES) <- SEs.SES$X
+SEs.raw$X <- NULL
+SEs.SES$X <- NULL
+diag(SEs.raw) <- 0
+diag(SEs.SES) <- 0
+
+# re-order rows & columns
+colnames(rgs.raw)
+order <- c("ADHD","Anxiety","MDD","Bip",
+           "SCZ","Autism","Anorexia",
+           "OCD","TS",
+           "CanLife","Alc_freq","Alc_quan",
+           "SI","AgeSI","CPD","Cess")
+rgs.raw <- rgs.raw[order,order]
+rgs.SES <- rgs.SES[order,order]
+
+SEs.raw <- SEs.raw[order,order]
+SEs.SES <- SEs.SES[order,order]
+
+# re-name traits
+library(data.table)
+oldnames <- c("ADHD","Anxiety","MDD","Bip",
+              "SCZ","Autism","Anorexia",
+              "OCD","TS",
+              "CanLife","Alc_freq","Alc_quan",
+              "SI","AgeSI","CPD","Cess")
+newnames <- c("ADHD","AnxD","MD","Bip",
+              "SCZ","ASD","AN",
+              "OCD","TS",
+              "Cannabis","AlcFreq","AlcQuan",
+              "SmkInit","AgeSmk","CigDay","SmkCes")
+
+setnames(rgs.raw, old = oldnames, new = newnames)
+setnames(rgs.SES, old = oldnames, new = newnames)
+
+setnames(SEs.raw, old = oldnames, new = newnames)
+setnames(SEs.SES, old = oldnames, new = newnames)
+
+rownames(rgs.raw) <- colnames(rgs.raw)
+rownames(rgs.SES) <- colnames(rgs.SES)
+
+rownames(SEs.raw) <- colnames(SEs.raw)
+rownames(SEs.SES) <- colnames(SEs.SES)
+
+# make dataframe of P-values of genetic correlations
+rg.P.raw <- as.data.frame(2*sapply(-abs(rgs.raw/SEs.raw), pnorm))
+diag(rg.P.raw) <- 1
+rg.P.SES <- as.data.frame(2*sapply(-abs(rgs.SES/SEs.SES), pnorm))
+diag(rg.P.SES) <- 1
+
+colnames(rg.P.raw) <- colnames(rgs.raw)
+colnames(rg.P.SES) <- colnames(rgs.SES)
+
+rownames(rg.P.raw) <- rownames(rgs.raw)
+rownames(rg.P.SES) <- rownames(rgs.SES)
+
+# make into lower triangles for FDR correction
+rg.P.raw[lower.tri(rg.P.raw)] <- NA
+diag(rg.P.raw) <- NA
+rg.P.SES[lower.tri(rg.P.SES)] <- NA
+diag(rg.P.SES) <- NA
+
+rg.P.raw.FDR <- as.data.frame(matrix(p.adjust(as.vector(as.matrix(rg.P.raw)), method='fdr'),ncol=16))
+rg.P.SES.FDR <- as.data.frame(matrix(p.adjust(as.vector(as.matrix(rg.P.SES)), method='fdr'),ncol=16))
+
+# now make it into a full symmetric matrix again 
+rg.P.raw.FDR[lower.tri(rg.P.raw.FDR)] <- t(rg.P.raw.FDR[upper.tri(rg.P.raw.FDR)])
+diag(rg.P.raw.FDR) <- 0
+rg.P.SES.FDR[lower.tri(rg.P.SES.FDR)] <- t(rg.P.SES.FDR[upper.tri(rg.P.SES.FDR)])
+diag(rg.P.SES.FDR) <- 0
+
+colnames(rg.P.raw.FDR) <- colnames(rgs.raw)
+colnames(rg.P.SES.FDR) <- colnames(rgs.SES)
+
+rownames(rg.P.raw.FDR) <- rownames(rgs.raw)
+rownames(rg.P.SES.FDR) <- rownames(rgs.SES)
+
+# save as csv
+write.csv(rg.P.raw.FDR, file = "rg.P.raw.FDR.csv")
+write.csv(rg.P.SES.FDR, file = "rg.P.SES.FDR.csv")
+
+### part II - rg changes ###
+
+change.P.SES <- read.csv("files_sign_15102019/significance_v2/Significance_SES_V2.csv",header=T,sep = ",")
+rownames(change.P.SES) <- change.P.SES$X
+change.P.SES$X <- NULL
+diag(change.P.SES) <- 1
+
+change.P.SES$PTSD <- NULL
+change.P.SES <- change.P.SES[!(row.names(change.P.SES) %in% row.names.remove), ]
+
+change.P.EA <- change.P.EA[order,order]
+change.P.HI <- change.P.HI[order,order]
+change.P.TI <- change.P.TI[order,order]
+change.P.SES <- change.P.SES[order,order]
+
+setnames(change.P.SES, old = oldnames, new = newnames)
+
+rownames(change.P.SES) <- colnames(change.P.SES)
+
+# make into lower triangles for FDR correction
+change.P.SES[lower.tri(change.P.SES)] <- NA
+diag(change.P.SES) <- NA
+
+change.P.SES.FDR <- as.data.frame(matrix(p.adjust(as.vector(as.matrix(change.P.SES)), method='fdr'),ncol=16))
+
+# now make it into a full symmetric matrix again 
+change.P.SES.FDR[lower.tri(change.P.SES.FDR)] <- t(change.P.SES.FDR[upper.tri(change.P.SES.FDR)])
+diag(change.P.SES.FDR) <- 0
+
+colnames(change.P.SES.FDR) <- colnames(rgs.SES)
+
+rownames(change.P.SES.FDR) <- rownames(rgs.SES)
+
+# save as csv
+write.csv(change.P.SES.FDR, file = "change.P.SES.FDR.csv")
